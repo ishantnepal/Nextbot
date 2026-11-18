@@ -1,281 +1,670 @@
-
 import streamlit as st
-from langchain_openai import ChatOpenAI
-from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
+import uuid
+import io
+import os
+import base64
+import html
+from datetime import datetime
 
-# PAGE CONFIG
+from langchain_openai import ChatOpenAI
+from langchain_core.messages import (
+    SystemMessage,
+    HumanMessage,
+    AIMessage
+)
+
+import speech_recognition as sr
+
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Preformatted
+)
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.utils import simpleSplit
+
+
+# ==========================================
+# PAGE CONFIGURATION
+# ==========================================
+
 st.set_page_config(
     page_title="NeuroBot AI",
     page_icon="🤖",
     layout="wide"
 )
 
-# CUSTOM PURPLE + BLACK THEME
-st.markdown("""
-<style>
-.stApp {
-    background: radial-gradient(circle at top, #19082e, #08050f 65%);
-    color: #ffffff;
-}
 
-[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #160625, #080510);
-    border-right: 1px solid #6824a8;
-}
+# ==========================================
+# SESSION STATE
+# ==========================================
 
-[data-testid="stHeader"] {
-    background: transparent;
-}
+if "chats" not in st.session_state:
+    first_id = str(uuid.uuid4())
+    st.session_state.chats = {
+        first_id: {
+            "title": "New Chat",
+            "messages": []
+        }
+    }
+    st.session_state.active_chat = first_id
 
-h1, h2, h3 {
-    color: #ffffff !important;
-}
+if "active_chat" not in st.session_state:
+    st.session_state.active_chat = list(
+        st.session_state.chats.keys()
+    )[0]
 
-.neuro-logo {
-    text-align: center;
-    padding: 25px 5px;
-    border-bottom: 1px solid #6322a0;
-    margin-bottom: 25px;
-}
+if "voice_transcript" not in st.session_state:
+    st.session_state.voice_transcript = ""
 
-.neuro-logo .robot {
-    font-size: 65px;
-    filter: drop-shadow(0 0 15px #a855f7);
-}
 
-.neuro-logo h1 {
-    font-size: 38px;
-    font-weight: 900;
-    background: linear-gradient(90deg, #ffffff, #bd65ff);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
+active_id = st.session_state.active_chat
+active_chat = st.session_state.chats[active_id]
+messages = active_chat["messages"]
 
-.neuro-logo p {
-    color: #c9a7ed;
-    letter-spacing: 2px;
-}
 
-.hero {
-    text-align: center;
-    padding: 35px 10px 20px;
-}
+# ==========================================
+# THEME SETTINGS
+# ==========================================
 
-.hero .icon {
-    font-size: 75px;
-    filter: drop-shadow(0 0 20px #a020f0);
-}
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = True
 
-.hero h1 {
-    font-size: clamp(38px, 6vw, 65px);
-    font-weight: 900;
-    background: linear-gradient(90deg, #ffffff, #b44aff, #7928ca);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-}
+dark = st.session_state.dark_mode
 
-.hero p {
-    color: #c6a5e8;
-    font-size: 18px;
-    letter-spacing: 2px;
-}
+if dark:
+    bg = "#0E1117"
+    panel = "#171B26"
+    text = "#F5F5F5"
+    secondary = "#A1A1AA"
+    accent = "#8B5CF6"
+else:
+    bg = "#F5F6FA"
+    panel = "#FFFFFF"
+    text = "#171717"
+    secondary = "#666666"
+    accent = "#7C3AED"
 
-div[data-testid="stChatMessage"] {
-    background: rgba(76, 24, 112, 0.20);
-    border: 1px solid rgba(168, 85, 247, 0.35);
-    border-radius: 16px;
-    padding: 14px;
-    margin-bottom: 12px;
-}
 
-.stChatInput textarea {
-    background: #160c24 !important;
-    color: white !important;
-}
+st.markdown(
+    f"""
+    <style>
+    .stApp {{
+        background-color: {bg};
+        color: {text};
+    }}
 
-.stChatInput {
-    border-color: #963cff !important;
-}
+    [data-testid="stSidebar"] {{
+        background-color: {panel};
+    }}
 
-.stButton button {
-    background: linear-gradient(90deg, #7928ca, #b44aff);
-    color: white;
-    border: 1px solid #c084fc;
-    border-radius: 12px;
-    font-weight: bold;
-    transition: 0.3s;
-}
+    h1, h2, h3, p, label {{
+        color: {text};
+    }}
 
-.stButton button:hover {
-    border-color: white;
-    box-shadow: 0 0 15px #a855f7;
-}
+    .neuro-title {{
+        font-size: 34px;
+        font-weight: 800;
+        text-align: center;
+        margin-bottom: 5px;
+    }}
 
-div[data-testid="stAlert"] {
-    border-radius: 12px;
-}
+    .neuro-subtitle {{
+        color: {secondary};
+        text-align: center;
+        margin-bottom: 25px;
+    }}
 
-footer {
-    visibility: hidden;
-}
+    .stButton button {{
+        border-radius: 10px;
+        border: 1px solid {accent};
+    }}
 
-#MainMenu {
-    visibility: hidden;
-}
-</style>
-""", unsafe_allow_html=True)
+    .stChatMessage {{
+        border-radius: 14px;
+    }}
 
-# SIDEBAR BRANDING
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# ==========================================
+# SIDEBAR
+# ==========================================
+
 with st.sidebar:
-    st.markdown("""
-    <div class="neuro-logo">
-        <div class="robot">🤖</div>
-        <h1>NeuroBot AI</h1>
-        <p>CHAT • EXPLORE • INNOVATE</p>
-    </div>
-    """, unsafe_allow_html=True)
 
-    st.markdown("### ⚙️ AI SETTINGS")
+    st.markdown("# 🤖 NeuroBot AI")
+    st.caption("Your intelligent AI assistant")
+
+    st.divider()
+
+    st.subheader("Settings")
+
+    st.session_state.dark_mode = st.toggle(
+        "Dark Mode",
+        value=st.session_state.dark_mode
+    )
 
     api_key = st.text_input(
         "OpenRouter API Key",
         type="password",
+        value=os.getenv("OPENROUTER_API_KEY", ""),
         placeholder="Enter your API key"
     )
 
-    model = st.text_input(
-        "Model ID",
+    model_name = st.text_input(
+        "AI Model",
         value="openai/gpt-4o-mini"
     )
 
-    system_prompt = st.text_area(
-        "System Prompt",
-        value="You are NeuroBot, a helpful, intelligent and friendly AI assistant."
+    code_mode = st.toggle(
+        "Code Assistant Mode",
+        value=False
     )
 
-    st.markdown("---")
+    st.divider()
 
-    if st.button("🗑️ Clear Chat", use_container_width=True):
-        st.session_state.messages = []
+    st.subheader("Chat History")
+
+    if st.button("＋ New Chat", use_container_width=True):
+
+        new_id = str(uuid.uuid4())
+
+        st.session_state.chats[new_id] = {
+            "title": "New Chat",
+            "messages": []
+        }
+
+        st.session_state.active_chat = new_id
         st.rerun()
 
-    st.markdown("---")
-    st.markdown("**⚡ Powered by**")
-    st.markdown("LangChain + OpenRouter")
-    st.caption("💜 Smarter Conversations. A Brighter Tomorrow.")
+    for chat_id, chat in reversed(
+        list(st.session_state.chats.items())
+    ):
 
-# MAIN HEADER
-st.markdown("""
-<div class="hero">
-    <div class="icon">🤖</div>
-    <h1>NeuroBot AI</h1>
-    <p>Your Intelligent AI Companion</p>
-</div>
-""", unsafe_allow_html=True)
+        if st.button(
+            "💬 " + chat["title"][:28],
+            key=chat_id,
+            use_container_width=True
+        ):
+            st.session_state.active_chat = chat_id
+            st.rerun()
 
-st.markdown("---")
+    st.divider()
 
-# INITIALIZE CHAT HISTORY
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+    if st.button("🗑️ Clear Current Chat", use_container_width=True):
 
-# INITIALIZE MODEL
-llm = None
+        active_chat["messages"] = []
+        active_chat["title"] = "New Chat"
+        st.rerun()
 
-if api_key:
+    st.caption("Powered by LangChain + OpenRouter")
+
+
+# ==========================================
+# REFRESH THEME AFTER TOGGLE
+# ==========================================
+
+# The next Streamlit rerun applies the selected theme.
+
+
+# ==========================================
+# SYSTEM PROMPT
+# ==========================================
+
+if code_mode:
+
+    system_prompt = """
+    You are NeuroBot AI, an expert programming assistant.
+
+    Your responsibilities:
+    - Write clean and readable code.
+    - Explain code step by step.
+    - Find and fix programming errors.
+    - Support Python, JavaScript, HTML, CSS and other languages.
+    - Use Markdown code blocks.
+    - Give practical examples.
+    - Never pretend that code was executed if it was not.
+
+    Be friendly, accurate and helpful.
+    """
+
+else:
+
+    system_prompt = """
+    You are NeuroBot AI, a smart and friendly AI assistant.
+
+    Your responsibilities:
+    - Answer questions clearly.
+    - Explain difficult topics simply.
+    - Help with learning, writing and creativity.
+    - Assist with programming and general knowledge.
+    - Use Markdown formatting when useful.
+
+    Be conversational, helpful and accurate.
+    """
+
+
+# ==========================================
+# IMAGE HANDLING
+# ==========================================
+
+st.markdown(
+    '<div class="neuro-title">🤖 NeuroBot AI</div>',
+    unsafe_allow_html=True
+)
+
+st.markdown(
+    '<div class="neuro-subtitle">'
+    'Your personal intelligent assistant'
+    '</div>',
+    unsafe_allow_html=True
+)
+
+uploaded_image = st.file_uploader(
+    "📎 Upload an image (optional)",
+    type=["png", "jpg", "jpeg", "webp"],
+    help="Choose an image to ask NeuroBot about it."
+)
+
+image_data_url = None
+
+if uploaded_image:
+
+    image_bytes = uploaded_image.getvalue()
+
+    if len(image_bytes) > 10 * 1024 * 1024:
+        st.error("Image must be smaller than 10 MB.")
+        uploaded_image = None
+
+    else:
+        encoded_image = base64.b64encode(
+            image_bytes
+        ).decode("utf-8")
+
+        mime_type = uploaded_image.type
+
+        image_data_url = (
+            f"data:{mime_type};base64,{encoded_image}"
+        )
+
+        st.image(
+            image_bytes,
+            caption="Image ready to send",
+            width=250
+        )
+
+
+# ==========================================
+# VOICE INPUT
+# ==========================================
+
+with st.expander("🎤 Voice Input"):
+
+    st.caption(
+        "Record your question and convert it into text."
+    )
+
+    voice_language = st.selectbox(
+        "Speech language",
+        ["en-IN", "en-US", "hi-IN", "bn-IN"]
+    )
+
+    audio_file = st.audio_input(
+        "Record your voice"
+    )
+
+    if audio_file:
+
+        if st.button("Transcribe Recording"):
+
+            try:
+
+                recognizer = sr.Recognizer()
+
+                audio = sr.AudioFile(
+                    io.BytesIO(audio_file.getvalue())
+                )
+
+                with audio as source:
+                    audio_data = recognizer.record(source)
+
+                transcript = recognizer.recognize_google(
+                    audio_data,
+                    language=voice_language
+                )
+
+                st.session_state.voice_transcript = transcript
+
+            except sr.UnknownValueError:
+                st.error("Could not understand the recording.")
+
+            except sr.RequestError:
+                st.error(
+                    "Speech recognition service unavailable. "
+                    "Check your internet connection."
+                )
+
+            except Exception as e:
+                st.error(f"Voice error: {e}")
+
+    if st.session_state.voice_transcript:
+
+        st.session_state.voice_transcript = st.text_area(
+            "Recognized text",
+            value=st.session_state.voice_transcript,
+            key="voice_edit"
+        )
+
+
+# ==========================================
+# DISPLAY CHAT HISTORY
+# ==========================================
+
+for message in messages:
+
+    with st.chat_message(message["role"]):
+
+        st.markdown(message["content"])
+
+        if message.get("image"):
+
+            image_bytes = base64.b64decode(
+                message["image"].split(",")[1]
+            )
+
+            st.image(image_bytes, width=250)
+
+
+# ==========================================
+# EXPORT FUNCTIONS
+# ==========================================
+
+def create_txt(chat_messages):
+
+    output = []
+
+    for msg in chat_messages:
+
+        role = msg["role"].upper()
+
+        output.append(
+            f"{role}:\n{msg['content']}\n"
+        )
+
+        if msg.get("image"):
+            output.append("[Image attached]\n")
+
+    return "\n".join(output)
+
+
+def create_pdf(chat_messages):
+
+    buffer = io.BytesIO()
+
+    document = SimpleDocTemplate(
+        buffer,
+        pagesize=letter
+    )
+
+    styles = getSampleStyleSheet()
+
+    story = []
+
+    story.append(
+        Paragraph("NeuroBot AI Conversation", styles["Title"])
+    )
+
+    story.append(Spacer(1, 20))
+
+    for msg in chat_messages:
+
+        role = msg["role"].capitalize()
+
+        story.append(
+            Paragraph(
+                f"<b>{role}</b>",
+                styles["Heading3"]
+            )
+        )
+
+        safe_text = html.escape(msg["content"])
+
+        story.append(
+            Paragraph(
+                safe_text.replace("\n", "<br/>"),
+                styles["BodyText"]
+            )
+        )
+
+        if msg.get("image"):
+            story.append(
+                Paragraph("[Image attached]", styles["Italic"])
+            )
+
+        story.append(Spacer(1, 12))
+
+    document.build(story)
+
+    buffer.seek(0)
+
+    return buffer.getvalue()
+
+
+# ==========================================
+# CHAT EXPORT
+# ==========================================
+
+if messages:
+
+    with st.expander("📥 Export Conversation"):
+
+        txt_data = create_txt(messages)
+
+        st.download_button(
+            "Download TXT",
+            data=txt_data,
+            file_name="neurobot_chat.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
+
+        pdf_data = create_pdf(messages)
+
+        st.download_button(
+            "Download PDF",
+            data=pdf_data,
+            file_name="neurobot_chat.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+
+
+# ==========================================
+# AI RESPONSE FUNCTION
+# ==========================================
+
+def generate_response(prompt, image_url=None):
+
+    if not api_key:
+
+        st.error(
+            "Please enter your OpenRouter API key "
+            "in the sidebar."
+        )
+
+        return
+
+    if not model_name.strip():
+
+        st.error("Please enter a model ID.")
+        return
+
+    # Save user message
+
+    user_message = {
+        "role": "user",
+        "content": prompt
+    }
+
+    if image_url:
+        user_message["image"] = image_url
+
+    messages.append(user_message)
+
+    if active_chat["title"] == "New Chat":
+        active_chat["title"] = prompt[:35] or "Image Chat"
+
+    with st.chat_message("user"):
+
+        st.markdown(prompt)
+
+        if image_url:
+
+            image_bytes = base64.b64decode(
+                image_url.split(",")[1]
+            )
+
+            st.image(image_bytes, width=250)
+
+    # Build LangChain messages
+
+    lc_messages = [
+        SystemMessage(content=system_prompt)
+    ]
+
+    for msg in messages:
+
+        if msg["role"] == "user":
+
+            if msg.get("image"):
+
+                content = [
+                    {
+                        "type": "text",
+                        "text": msg["content"]
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": msg["image"]
+                        }
+                    }
+                ]
+
+                lc_messages.append(
+                    HumanMessage(content=content)
+                )
+
+            else:
+
+                lc_messages.append(
+                    HumanMessage(content=msg["content"])
+                )
+
+        elif msg["role"] == "assistant":
+
+            lc_messages.append(
+                AIMessage(content=msg["content"])
+            )
+
+    # Connect to OpenRouter
+
     try:
+
         llm = ChatOpenAI(
-            model=model,
+            model=model_name,
             api_key=api_key,
             base_url="https://openrouter.ai/api/v1",
             temperature=0.7,
-            max_tokens=1000
+            max_tokens=2000,
+            streaming=True,
+            default_headers={
+                "HTTP-Referer": "http://localhost:8501",
+                "X-Title": "NeuroBot AI"
+            }
         )
-    except Exception as e:
-        st.error(f"Model initialization error: {e}")
-
-# WELCOME MESSAGE
-if not st.session_state.messages:
-    st.markdown(
-        "<h3 style='text-align:center;color:#c084fc;'>"
-        "✨ Ask me anything... I'm here to help!"
-        "</h3>",
-        unsafe_allow_html=True
-    )
-
-    col1, col2, col3 = st.columns(3)
-
-    with col1:
-        st.markdown("💡 **Learn anything**")
-
-    with col2:
-        st.markdown("🚀 **Explore ideas**")
-
-    with col3:
-        st.markdown("💻 **Get coding help**")
-
-# DISPLAY CHAT HISTORY
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
-
-# CHAT INPUT
-if prompt := st.chat_input("Type your message to NeuroBot..."):
-
-    if not api_key:
-        st.warning("Please enter your OpenRouter API key in the sidebar.")
-
-    elif not llm:
-        st.error("AI model is not initialized.")
-
-    else:
-        st.session_state.messages.append({
-            "role": "user",
-            "content": prompt
-        })
-
-        with st.chat_message("user"):
-            st.markdown(prompt)
 
         with st.chat_message("assistant"):
-            try:
-                history = [
-                    SystemMessage(content=system_prompt)
-                ]
 
-                for msg in st.session_state.messages[:-1]:
-                    if msg["role"] == "user":
-                        history.append(
-                            HumanMessage(content=msg["content"])
-                        )
-                    else:
-                        history.append(
-                            AIMessage(content=msg["content"])
-                        )
+            response_placeholder = st.empty()
 
-                history.append(HumanMessage(content=prompt))
+            full_response = ""
 
-                with st.spinner("NeuroBot is thinking..."):
-                    response = llm.invoke(history)
+            # Stream responses for typing animation
 
-                answer = response.content
+            for chunk in llm.stream(lc_messages):
 
-                if isinstance(answer, list):
-                    answer = "\n".join(
-                        str(part.get("text", part))
-                        if isinstance(part, dict)
-                        else str(part)
-                        for part in answer
-                    )
+                content = chunk.content
 
-                st.markdown(answer)
+                if isinstance(content, str):
 
-                st.session_state.messages.append({
-                    "role": "assistant",
-                    "content": answer
-                })
+                    full_response += content
 
-            except Exception as e:
-                st.error(f"Something went wrong: {e}")
-                st.session_state.messages.pop()
+                elif isinstance(content, list):
 
+                    for part in content:
+
+                        if isinstance(part, dict):
+                            if part.get("type") == "text":
+                                full_response += part.get("text", "")
+
+                response_placeholder.markdown(
+                    full_response + " ▌"
+                )
+
+            response_placeholder.markdown(full_response)
+
+        messages.append({
+            "role": "assistant",
+            "content": full_response
+        })
+
+        st.rerun()
+
+    except Exception as e:
+
+        messages.pop()
+
+        st.error(
+            f"Unable to generate response: {str(e)}"
+        )
+
+
+# ==========================================
+# CHAT INPUT
+# ==========================================
+
+prompt = st.chat_input(
+    "Message NeuroBot AI..."
+)
+
+send_voice = st.button(
+    "Send Voice Transcript",
+    disabled=not bool(st.session_state.voice_transcript),
+    use_container_width=False
+)
+
+if prompt:
+
+    generate_response(
+        prompt,
+        image_data_url
+    )
+
+elif send_voice:
+
+    voice_prompt = st.session_state.voice_transcript
+
+    st.session_state.voice_transcript = ""
+
+    generate_response(
+        voice_prompt,
+        image_data_url
+                )
+    
