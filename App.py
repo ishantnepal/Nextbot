@@ -40,6 +40,8 @@ st.set_page_config(
 # ==========================================
 # SESSION STATE
 # ==========================================
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = True
 
 if "chats" not in st.session_state:
     first_id = str(uuid.uuid4())
