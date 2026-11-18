@@ -312,30 +312,31 @@ if uploaded_image:
         )
 
 
+
+
 # ==========================================
-# VOICE INPUT
+# VOICE INPUT - IMPROVED
 # ==========================================
 
 with st.expander("🎤 Voice Input"):
 
-    st.caption(
-        "Record your question and convert it into text."
-    )
-
-    voice_language = st.selectbox(
-        "Speech language",
-        ["en-IN", "en-US", "hi-IN", "bn-IN"]
-    )
+    st.write("Record your question below.")
 
     audio_file = st.audio_input(
-        "Record your voice"
+        "Tap to record",
+        key="neurobot_audio"
     )
 
-    if audio_file:
+    if audio_file is not None:
+
+        st.success("Recording captured!")
+
+        st.audio(audio_file)
 
         if st.button("Transcribe Recording"):
 
             try:
+                import speech_recognition as sr
 
                 recognizer = sr.Recognizer()
 
@@ -348,30 +349,17 @@ with st.expander("🎤 Voice Input"):
 
                 transcript = recognizer.recognize_google(
                     audio_data,
-                    language=voice_language
+                    language="en-IN"
                 )
 
                 st.session_state.voice_transcript = transcript
 
-            except sr.UnknownValueError:
-                st.error("Could not understand the recording.")
-
-            except sr.RequestError:
-                st.error(
-                    "Speech recognition service unavailable. "
-                    "Check your internet connection."
-                )
+                st.success("Transcription complete!")
+                st.write(transcript)
 
             except Exception as e:
                 st.error(f"Voice error: {e}")
-
-    if st.session_state.voice_transcript:
-
-        st.session_state.voice_transcript = st.text_area(
-            "Recognized text",
-            value=st.session_state.voice_transcript,
-            key="voice_edit"
-        )
+                
 
 
 # ==========================================
