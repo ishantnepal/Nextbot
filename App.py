@@ -1,29 +1,19 @@
+
 import streamlit as st
 import uuid
 import io
 import os
 import base64
 import html
-from datetime import datetime
 
 from langchain_openai import ChatOpenAI
-from langchain_core.messages import (
-    SystemMessage,
-    HumanMessage,
-    AIMessage
-)
+from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 
 import speech_recognition as sr
 
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Paragraph,
-    Spacer,
-    Preformatted
-)
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.lib.utils import simpleSplit
 
 
 # ==========================================
@@ -40,6 +30,7 @@ st.set_page_config(
 # ==========================================
 # SESSION STATE
 # ==========================================
+
 if "dark_mode" not in st.session_state:
     st.session_state.dark_mode = True
 
@@ -61,11 +52,13 @@ if "active_chat" not in st.session_state:
 if "voice_transcript" not in st.session_state:
     st.session_state.voice_transcript = ""
 
+if "clear_prompt" not in st.session_state:
+    st.session_state.clear_prompt = False
+
 
 active_id = st.session_state.active_chat
 active_chat = st.session_state.chats[active_id]
 messages = active_chat["messages"]
-
 
 
 # ==========================================
@@ -74,6 +67,7 @@ messages = active_chat["messages"]
 
 st.markdown("""
 <style>
+
 .stApp {
     background: #090611;
     color: #F5F0FF;
@@ -102,9 +96,7 @@ h1, h2, h3, p, label {
 }
 
 .stButton button {
-    background: linear-gradient(
-        135deg, #7C3AED, #4C1D95
-    );
+    background: linear-gradient(135deg, #7C3AED, #4C1D95);
     color: white;
     border: 1px solid #A78BFA;
     border-radius: 12px;
@@ -124,15 +116,23 @@ h1, h2, h3, p, label {
     padding: 15px;
 }
 
-[data-testid="stChatInput"] {
-    border: 1px solid #8B5CF6;
-    border-radius: 15px;
-}
-
 [data-testid="stFileUploader"] {
     background: #171124;
     border: 1px dashed #8B5CF6;
     border-radius: 14px;
+}
+
+[data-testid="stTextInput"] input {
+    background: #171124;
+    color: #F5F0FF;
+    border: 1px solid #8B5CF6;
+    border-radius: 25px;
+    min-height: 48px;
+}
+
+[data-testid="stPopover"] button {
+    border-radius: 50px;
+    min-height: 45px;
 }
 
 hr {
@@ -141,7 +141,6 @@ hr {
 
 </style>
 """, unsafe_allow_html=True)
-
 
 
 # ==========================================
@@ -219,13 +218,6 @@ with st.sidebar:
 
 
 # ==========================================
-# REFRESH THEME AFTER TOGGLE
-# ==========================================
-
-# The next Streamlit rerun applies the selected theme.
-
-
-# ==========================================
 # SYSTEM PROMPT
 # ==========================================
 
@@ -263,7 +255,7 @@ else:
 
 
 # ==========================================
-# IMAGE HANDLING
+# HEADER
 # ==========================================
 
 st.markdown(
@@ -277,108 +269,6 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True
 )
-
-uploaded_image = st.file_uploader(
-    "📎 Upload an image (optional)",
-    type=["png", "jpg", "jpeg", "webp"],
-    help="Choose an image to ask NeuroBot about it."
-)
-
-image_data_url = None
-
-if uploaded_image:
-
-    image_bytes = uploaded_image.getvalue()
-
-    if len(image_bytes) > 10 * 1024 * 1024:
-        st.error("Image must be smaller than 10 MB.")
-        uploaded_image = None
-
-    else:
-        encoded_image = base64.b64encode(
-            image_bytes
-        ).decode("utf-8")
-
-        mime_type = uploaded_image.type
-
-        image_data_url = (
-            f"data:{mime_type};base64,{encoded_image}"
-        )
-
-        st.image(
-            image_bytes,
-            caption="Image ready to send",
-            width=250
-        )
-
-
-
-
-# ==========================================
-# VOICE INPUT - IMPROVED
-# ==========================================
-
-with st.expander("🎤 Voice Input"):
-
-    st.write("Record your question below.")
-
-    audio_file = st.audio_input(
-        "Tap to record",
-        key="neurobot_audio"
-    )
-
-    if audio_file is not None:
-
-        st.success("Recording captured!")
-
-        st.audio(audio_file)
-
-        if st.button("Transcribe Recording"):
-
-            try:
-                import speech_recognition as sr
-
-                recognizer = sr.Recognizer()
-
-                audio = sr.AudioFile(
-                    io.BytesIO(audio_file.getvalue())
-                )
-
-                with audio as source:
-                    audio_data = recognizer.record(source)
-
-                transcript = recognizer.recognize_google(
-                    audio_data,
-                    language="en-IN"
-                )
-
-                st.session_state.voice_transcript = transcript
-
-                st.success("Transcription complete!")
-                st.write(transcript)
-
-            except Exception as e:
-                st.error(f"Voice error: {e}")
-                
-
-
-# ==========================================
-# DISPLAY CHAT HISTORY
-# ==========================================
-
-for message in messages:
-
-    with st.chat_message(message["role"]):
-
-        st.markdown(message["content"])
-
-        if message.get("image"):
-
-            image_bytes = base64.b64decode(
-                message["image"].split(",")[1]
-            )
-
-            st.image(image_bytes, width=250)
 
 
 # ==========================================
@@ -413,7 +303,6 @@ def create_pdf(chat_messages):
     )
 
     styles = getSampleStyleSheet()
-
     story = []
 
     story.append(
@@ -457,55 +346,21 @@ def create_pdf(chat_messages):
 
 
 # ==========================================
-# CHAT EXPORT
-# ==========================================
-
-if messages:
-
-    with st.expander("📥 Export Conversation"):
-
-        txt_data = create_txt(messages)
-
-        st.download_button(
-            "Download TXT",
-            data=txt_data,
-            file_name="neurobot_chat.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
-
-        pdf_data = create_pdf(messages)
-
-        st.download_button(
-            "Download PDF",
-            data=pdf_data,
-            file_name="neurobot_chat.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
-
-
-# ==========================================
 # AI RESPONSE FUNCTION
 # ==========================================
 
 def generate_response(prompt, image_url=None):
 
     if not api_key:
-
         st.error(
             "Please enter your OpenRouter API key "
             "in the sidebar."
         )
-
         return
 
     if not model_name.strip():
-
         st.error("Please enter a model ID.")
         return
-
-    # Save user message
 
     user_message = {
         "role": "user",
@@ -525,14 +380,10 @@ def generate_response(prompt, image_url=None):
         st.markdown(prompt)
 
         if image_url:
-
             image_bytes = base64.b64decode(
                 image_url.split(",")[1]
             )
-
             st.image(image_bytes, width=250)
-
-    # Build LangChain messages
 
     lc_messages = [
         SystemMessage(content=system_prompt)
@@ -573,8 +424,6 @@ def generate_response(prompt, image_url=None):
                 AIMessage(content=msg["content"])
             )
 
-    # Connect to OpenRouter
-
     try:
 
         llm = ChatOpenAI(
@@ -593,17 +442,13 @@ def generate_response(prompt, image_url=None):
         with st.chat_message("assistant"):
 
             response_placeholder = st.empty()
-
             full_response = ""
-
-            # Stream responses for typing animation
 
             for chunk in llm.stream(lc_messages):
 
                 content = chunk.content
 
                 if isinstance(content, str):
-
                     full_response += content
 
                 elif isinstance(content, list):
@@ -637,34 +482,193 @@ def generate_response(prompt, image_url=None):
 
 
 # ==========================================
-# CHAT INPUT
+# DISPLAY CHAT HISTORY
 # ==========================================
 
-prompt = st.chat_input(
-    "Message NeuroBot AI..."
+for message in messages:
+
+    with st.chat_message(message["role"]):
+
+        st.markdown(message["content"])
+
+        if message.get("image"):
+
+            image_bytes = base64.b64decode(
+                message["image"].split(",")[1]
+            )
+
+            st.image(image_bytes, width=250)
+
+
+# ==========================================
+# CHAT EXPORT
+# ==========================================
+
+if messages:
+
+    with st.expander("📥 Export Conversation"):
+
+        txt_data = create_txt(messages)
+
+        st.download_button(
+            "Download TXT",
+            data=txt_data,
+            file_name="neurobot_chat.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
+
+        pdf_data = create_pdf(messages)
+
+        st.download_button(
+            "Download PDF",
+            data=pdf_data,
+            file_name="neurobot_chat.pdf",
+            mime="application/pdf",
+            use_container_width=True
+        )
+
+
+# ==========================================
+# COMPACT CHATGPT-STYLE INPUT BAR
+# ==========================================
+
+if st.session_state.clear_prompt:
+    st.session_state.chat_prompt = ""
+    st.session_state.clear_prompt = False
+
+col1, col2, col3, col4 = st.columns(
+    [0.7, 6, 0.7, 0.9],
+    vertical_alignment="center"
 )
 
-send_voice = st.button(
-    "Send Voice Transcript",
-    disabled=not bool(st.session_state.voice_transcript),
-    use_container_width=False
-)
+uploaded_image = None
+image_data_url = None
+audio_file = None
 
-if prompt:
+# PLUS BUTTON - IMAGE UPLOAD
 
-    generate_response(
-        prompt,
-        image_data_url
+with col1:
+
+    with st.popover("＋"):
+
+        st.markdown("### 📎 Attach image")
+
+        uploaded_image = st.file_uploader(
+            "Choose an image",
+            type=["png", "jpg", "jpeg", "webp"],
+            key="neurobot_image"
+        )
+
+        if uploaded_image:
+
+            image_bytes = uploaded_image.getvalue()
+
+            if len(image_bytes) > 10 * 1024 * 1024:
+                st.error("Image must be smaller than 10 MB.")
+            else:
+                encoded_image = base64.b64encode(
+                    image_bytes
+                ).decode("utf-8")
+
+                image_data_url = (
+                    f"data:{uploaded_image.type};base64,{encoded_image}"
+                )
+
+                st.image(
+                    image_bytes,
+                    caption="Image ready to send",
+                    width=150
+                )
+
+
+# MESSAGE INPUT
+
+with col2:
+
+    prompt = st.text_input(
+        "Message NeuroBot AI",
+        placeholder="Message NeuroBot AI...",
+        label_visibility="collapsed",
+        key="chat_prompt"
     )
 
-elif send_voice:
 
-    voice_prompt = st.session_state.voice_transcript
+# MICROPHONE BUTTON - VOICE INPUT
 
-    st.session_state.voice_transcript = ""
+with col3:
+
+    with st.popover("🎙️"):
+
+        st.markdown("### 🎤 Voice input")
+
+        audio_file = st.audio_input(
+            "Record your voice",
+            key="neurobot_audio"
+        )
+
+        if audio_file is not None:
+
+            st.success("Recording captured!")
+
+            if st.button("Transcribe Recording"):
+
+                try:
+
+                    recognizer = sr.Recognizer()
+
+                    audio = sr.AudioFile(
+                        io.BytesIO(audio_file.getvalue())
+                    )
+
+                    with audio as source:
+                        audio_data = recognizer.record(source)
+
+                    transcript = recognizer.recognize_google(
+                        audio_data,
+                        language="en-IN"
+                    )
+
+                    st.session_state.voice_transcript = transcript
+
+                    st.success("Transcription complete!")
+                    st.write(transcript)
+
+                except Exception as e:
+                    st.error(f"Voice error: {e}")
+
+        if st.session_state.voice_transcript:
+
+            st.write("Transcript:")
+            st.write(st.session_state.voice_transcript)
+
+            if st.button("Send Voice Transcript"):
+
+                voice_prompt = st.session_state.voice_transcript
+                st.session_state.voice_transcript = ""
+
+                generate_response(
+                    voice_prompt,
+                    image_data_url
+                )
+
+
+# SEND BUTTON
+
+with col4:
+
+    send_message = st.button(
+        "↑",
+        use_container_width=True,
+        help="Send message"
+    )
+
+
+if send_message and prompt.strip():
+
+    st.session_state.clear_prompt = True
 
     generate_response(
-        voice_prompt,
+        prompt.strip(),
         image_data_url
-                )
-    
+    )
