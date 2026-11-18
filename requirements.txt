@@ -1,3 +1,6 @@
-streamlit
+streamlit>=1.41.0
 langchain
 langchain-openai
+langchain-core
+SpeechRecognition
+reportlab
