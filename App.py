@@ -65,71 +65,81 @@ active_chat = st.session_state.chats[active_id]
 messages = active_chat["messages"]
 
 
+
 # ==========================================
-# THEME SETTINGS
+# PURPLE BLACK NEUROBOT THEME
 # ==========================================
 
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = True
+st.markdown("""
+<style>
+.stApp {
+    background: #090611;
+    color: #F5F0FF;
+}
 
-dark = st.session_state.dark_mode
+[data-testid="stSidebar"] {
+    background: #100B1D;
+    border-right: 1px solid #30204B;
+}
 
-if dark:
-    bg = "#0E1117"
-    panel = "#171B26"
-    text = "#F5F5F5"
-    secondary = "#A1A1AA"
-    accent = "#8B5CF6"
-else:
-    bg = "#F5F6FA"
-    panel = "#FFFFFF"
-    text = "#171717"
-    secondary = "#666666"
-    accent = "#7C3AED"
+h1, h2, h3, p, label {
+    color: #F5F0FF !important;
+}
 
+.neuro-title {
+    font-size: 38px;
+    font-weight: 900;
+    text-align: center;
+    color: #B78AFF !important;
+    text-shadow: 0 0 18px #8B5CF6;
+}
 
-st.markdown(
-    f"""
-    <style>
-    .stApp {{
-        background-color: {bg};
-        color: {text};
-    }}
+.neuro-subtitle {
+    text-align: center;
+    color: #A99BBE !important;
+}
 
-    [data-testid="stSidebar"] {{
-        background-color: {panel};
-    }}
+.stButton button {
+    background: linear-gradient(
+        135deg, #7C3AED, #4C1D95
+    );
+    color: white;
+    border: 1px solid #A78BFA;
+    border-radius: 12px;
+    transition: 0.3s;
+}
 
-    h1, h2, h3, p, label {{
-        color: {text};
-    }}
+.stButton button:hover {
+    background: #9333EA;
+    border-color: #C4B5FD;
+    box-shadow: 0 0 15px #8B5CF6;
+}
 
-    .neuro-title {{
-        font-size: 34px;
-        font-weight: 800;
-        text-align: center;
-        margin-bottom: 5px;
-    }}
+[data-testid="stChatMessage"] {
+    background: #171124;
+    border: 1px solid #33204F;
+    border-radius: 16px;
+    padding: 15px;
+}
 
-    .neuro-subtitle {{
-        color: {secondary};
-        text-align: center;
-        margin-bottom: 25px;
-    }}
+[data-testid="stChatInput"] {
+    border: 1px solid #8B5CF6;
+    border-radius: 15px;
+}
 
-    .stButton button {{
-        border-radius: 10px;
-        border: 1px solid {accent};
-    }}
+[data-testid="stFileUploader"] {
+    background: #171124;
+    border: 1px dashed #8B5CF6;
+    border-radius: 14px;
+}
 
-    .stChatMessage {{
-        border-radius: 14px;
-    }}
+hr {
+    border-color: #30204B;
+}
 
-    </style>
-    """,
-    unsafe_allow_html=True
-)
+</style>
+""", unsafe_allow_html=True)
+
 
 
 # ==========================================
